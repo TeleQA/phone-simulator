@@ -1,0 +1,82 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: phone-simulator
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:simulatormq}
+    password: ${RABBIT_PASSWORD:changeit}
+    virtual-host: ${RABBIT_VHOST:call-simulator-vhost}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    consumer:
+      group-id: phonesim-timer-firer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: com.azerconnect.phonesim.adapter.kafka
+
+phonesim:
+  amqp:
+    queue: call-event-queue
+    exchange: ""
+    confirm-timeout-ms: 5000
+  scheduler:
+    base-url: ${SCHEDULER_URL:http://localhost:8080}
+    connect-timeout-ms: 1000
+    read-timeout-ms: 3000
+  kafka:
+    timer-topic: phonesim.timers.v1
+    listener-concurrency: 4
+  defaults:
+    voice-mo-service-key: 201
+    voice-mo-roaming-service-key: 200
+    voice-mt-service-key: 101
+    sms-service-key: 205
+    smsc-address: "994550000342"
+  redis:
+    call-ttl: 2h
+  webhook:
+    fallback-url:
+    max-retries: 4
+    initial-backoff-ms: 500
+    max-backoff-ms: 8000
+    max-concurrent: 256
+    request-timeout-ms: 3000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    root: INFO
+    com.azerconnect.phonesim: INFO

@@ -1,0 +1,33 @@
+spring:
+  threads:
+    virtual:
+      enabled: false
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+  kafka:
+    bootstrap-servers: localhost:9092
+phonesim:
+  amqp:
+    queue: call-event-queue
+    exchange: ""
+  scheduler:
+    base-url: http://localhost:9999
+  kafka:
+    timer-topic: phonesim.timers.v1
+  defaults:
+    voice-mo-service-key: 201
+    voice-mo-roaming-service-key: 200
+    voice-mt-service-key: 101
+    sms-service-key: 205
+    smsc-address: "994550000342"
+  webhook:
+    fallback-url:
+    max-retries: 1
+    initial-backoff-ms: 10
+    max-backoff-ms: 50
+    max-concurrent: 16
+    request-timeout-ms: 1000
