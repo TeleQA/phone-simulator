@@ -9,7 +9,7 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CallEvent(
         UUID eventId,
-        UUID callId,
+        String testId,
         String eventType,
         Instant occurredAt,
         String state,
@@ -18,7 +18,7 @@ public record CallEvent(
     public static CallEvent of(String eventType, Call call) {
         return new CallEvent(
                 UUID.randomUUID(),
-                call.callId(),
+                call.testId(),
                 eventType,
                 Instant.now(),
                 call.status().name(),

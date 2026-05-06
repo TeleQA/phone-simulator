@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: 8082
   shutdown: graceful
 
 spring:
@@ -15,16 +15,6 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: 2s
-  rabbitmq:
-    host: ${RABBIT_HOST:localhost}
-    port: ${RABBIT_PORT:5672}
-    username: ${RABBIT_USER:simulatormq}
-    password: ${RABBIT_PASSWORD:changeit}
-    virtual-host: ${RABBIT_VHOST:call-simulator-vhost}
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    template:
-      mandatory: true
   kafka:
     bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
     consumer:
@@ -35,16 +25,13 @@ spring:
         spring.json.trusted.packages: com.azerconnect.phonesim.adapter.kafka
 
 phonesim:
-  amqp:
-    queue: call-event-queue
-    exchange: ""
-    confirm-timeout-ms: 5000
   scheduler:
     base-url: ${SCHEDULER_URL:http://localhost:8080}
     connect-timeout-ms: 1000
     read-timeout-ms: 3000
   kafka:
     timer-topic: phonesim.timers.v1
+    call-event-topic: ${PHONESIM_CALL_EVENT_TOPIC:call-event-queue}
     listener-concurrency: 4
   defaults:
     voice-mo-service-key: 201

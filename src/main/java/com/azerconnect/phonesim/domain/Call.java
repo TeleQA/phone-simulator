@@ -3,11 +3,10 @@ package com.azerconnect.phonesim.domain;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Call(
-        UUID callId,
+        String testId,
         CallKind kind,
         Direction direction,
         CallStatus status,
@@ -28,7 +27,7 @@ public record Call(
 ) {
     public Call withStatus(CallStatus next, Instant when) {
         return new Call(
-                callId, kind, direction, next,
+                testId, kind, direction, next,
                 callingParty, calledParty, imsi,
                 mscNumber, vlrAddress, lac, cellId,
                 durationSeconds, serviceKey, roaming, callbackUrl,
@@ -38,7 +37,7 @@ public record Call(
 
     public Call withFailure(String reason, Instant when) {
         return new Call(
-                callId, kind, direction, CallStatus.FAILED,
+                testId, kind, direction, CallStatus.FAILED,
                 callingParty, calledParty, imsi,
                 mscNumber, vlrAddress, lac, cellId,
                 durationSeconds, serviceKey, roaming, callbackUrl,

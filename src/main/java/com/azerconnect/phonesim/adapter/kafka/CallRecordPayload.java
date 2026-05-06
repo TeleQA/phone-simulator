@@ -1,4 +1,4 @@
-package com.azerconnect.phonesim.adapter.amqp;
+package com.azerconnect.phonesim.adapter.kafka;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;

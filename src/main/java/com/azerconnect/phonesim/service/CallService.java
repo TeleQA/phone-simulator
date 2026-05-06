@@ -1,6 +1,6 @@
 package com.azerconnect.phonesim.service;
 
-import com.azerconnect.phonesim.adapter.amqp.CallRecordPublisher;
+import com.azerconnect.phonesim.adapter.kafka.CallEventPublisher;
 import com.azerconnect.phonesim.adapter.kafka.FireEvent;
 import com.azerconnect.phonesim.adapter.redis.CallRepository;
 import com.azerconnect.phonesim.adapter.scheduler.SchedulerClient;
@@ -12,10 +12,12 @@ import com.azerconnect.phonesim.domain.CallNotFoundException;
 import com.azerconnect.phonesim.domain.CallStateMachine;
 import com.azerconnect.phonesim.domain.CallStatus;
 import com.azerconnect.phonesim.domain.Direction;
+import com.azerconnect.phonesim.domain.DuplicateTestIdException;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -30,14 +32,14 @@ public class CallService {
 
     private final CallRepository repo;
     private final CallRecordMapper mapper;
-    private final CallRecordPublisher publisher;
+    private final CallEventPublisher publisher;
     private final SchedulerClient scheduler;
     private final WebhookDispatcher webhooks;
     private final MeterRegistry meters;
 
     public CallService(CallRepository repo,
                        CallRecordMapper mapper,
-                       CallRecordPublisher publisher,
+                       CallEventPublisher publisher,
                        SchedulerClient scheduler,
                        WebhookDispatcher webhooks,
                        MeterRegistry meters) {
@@ -49,82 +51,94 @@ public class CallService {
         this.meters = meters;
     }
 
-    public Call placeVoice(Direction direction,
+    public Call placeVoice(String testId, Direction direction,
                             String callingParty, String calledParty, String imsi,
                             String mscNumber, String vlrAddress, int lac, int cellId,
                             int durationSeconds, boolean roaming, Integer serviceKeyOverride,
                             String callbackUrl) {
-        UUID callId = UUID.randomUUID();
-        int serviceKey = mapper.resolveServiceKey(CallKind.VOICE, direction, roaming, serviceKeyOverride);
-        Instant now = Instant.now();
-        Call call = new Call(callId, CallKind.VOICE, direction, CallStatus.PENDING,
-                callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
-                durationSeconds, serviceKey, roaming, callbackUrl, now, now, null);
-        repo.save(call);
-        Counter.builder("phonesim.calls.created")
-                .tag("kind", "VOICE").tag("direction", direction.name())
-                .register(meters).increment();
-
+        MDC.put("testId", testId);
         try {
-            call = transition(call, CallStatus.DIALING);
-            publisher.publish(callId, mapper.toInitial(call));
-            call = transition(call, CallStatus.RINGING);
-            UUID timerId = UUID.randomUUID();
-            scheduler.enqueueRelease(timerId, callId, durationSeconds * 1000L);
-            repo.saveTimerId(callId, timerId);
-            call = transition(call, CallStatus.ANSWERED);
-        } catch (RuntimeException e) {
-            call = fail(call, e.getMessage());
+            int serviceKey = mapper.resolveServiceKey(CallKind.VOICE, direction, roaming, serviceKeyOverride);
+            Instant now = Instant.now();
+            Call call = new Call(testId, CallKind.VOICE, direction, CallStatus.PENDING,
+                    callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
+                    durationSeconds, serviceKey, roaming, callbackUrl, now, now, null);
+            if (!repo.saveIfAbsent(call)) {
+                throw new DuplicateTestIdException(testId);
+            }
+            Counter.builder("phonesim.calls.created")
+                    .tag("kind", "VOICE").tag("direction", direction.name())
+                    .register(meters).increment();
+
+            try {
+                call = transition(call, CallStatus.DIALING);
+                publisher.publish(testId, mapper.toInitial(call));
+                call = transition(call, CallStatus.RINGING);
+                UUID timerId = UUID.randomUUID();
+                scheduler.enqueueRelease(timerId, testId, durationSeconds * 1000L);
+                repo.saveTimerId(testId, timerId);
+                call = transition(call, CallStatus.ANSWERED);
+            } catch (RuntimeException e) {
+                call = fail(call, e.getMessage());
+            }
+            return call;
+        } finally {
+            MDC.remove("testId");
         }
-        return call;
     }
 
-    public Call sendSms(Direction direction,
+    public Call sendSms(String testId, Direction direction,
                         String callingParty, String calledParty, String imsi,
                         String mscNumber, String vlrAddress, int lac, int cellId,
                         Integer serviceKeyOverride, String callbackUrl) {
-        UUID callId = UUID.randomUUID();
-        int serviceKey = mapper.resolveServiceKey(CallKind.SMS, direction, false, serviceKeyOverride);
-        Instant now = Instant.now();
-        Call sms = new Call(callId, CallKind.SMS, direction, CallStatus.PENDING,
-                callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
-                0, serviceKey, false, callbackUrl, now, now, null);
-        repo.save(sms);
-        Counter.builder("phonesim.sms.sent")
-                .tag("direction", direction.name()).register(meters).increment();
-
+        MDC.put("testId", testId);
         try {
-            publisher.publish(callId, mapper.toInitial(sms));
-            sms = transition(sms, CallStatus.ANSWERED);
-            sms = transition(sms, CallStatus.RELEASED);
-            webhooks.dispatch(callbackUrl, CallEvent.of("SMS_DELIVERED", sms));
-        } catch (RuntimeException e) {
-            sms = fail(sms, e.getMessage());
-            webhooks.dispatch(callbackUrl, CallEvent.of("SMS_FAILED", sms));
+            int serviceKey = mapper.resolveServiceKey(CallKind.SMS, direction, false, serviceKeyOverride);
+            Instant now = Instant.now();
+            Call sms = new Call(testId, CallKind.SMS, direction, CallStatus.PENDING,
+                    callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
+                    0, serviceKey, false, callbackUrl, now, now, null);
+            if (!repo.saveIfAbsent(sms)) {
+                throw new DuplicateTestIdException(testId);
+            }
+            Counter.builder("phonesim.sms.sent")
+                    .tag("direction", direction.name()).register(meters).increment();
+
+            try {
+                publisher.publish(testId, mapper.toInitial(sms));
+                sms = transition(sms, CallStatus.ANSWERED);
+                sms = transition(sms, CallStatus.RELEASED);
+                webhooks.dispatch(callbackUrl, CallEvent.of("SMS_DELIVERED", sms));
+            } catch (RuntimeException e) {
+                sms = fail(sms, e.getMessage());
+                webhooks.dispatch(callbackUrl, CallEvent.of("SMS_FAILED", sms));
+            }
+            return sms;
+        } finally {
+            MDC.remove("testId");
         }
-        return sms;
     }
 
-    public void onTimerFire(UUID callId, String eventType) {
+    public void onTimerFire(String testId, String eventType) {
         if (!FireEvent.EVENT_RELEASE.equals(eventType)) {
-            log.warn("Unknown FireEvent type {} for callId={} — ignoring", eventType, callId);
+            log.warn("Unknown FireEvent type {} for testId={} — ignoring", eventType, testId);
             return;
         }
-        Optional<Call> maybe = repo.findById(callId);
+        Optional<Call> maybe = repo.findById(testId);
         if (maybe.isEmpty()) {
-            log.warn("Timer fired for unknown callId={} — ignoring", callId);
+            log.warn("Timer fired for unknown testId={} — ignoring", testId);
             return;
         }
         Call call = maybe.get();
         if (call.status().isTerminal()) {
             log.debug("Timer fired for already-terminal call {} (state={}) — idempotent skip",
-                    callId, call.status());
+                    testId, call.status());
             return;
         }
         try {
-            publisher.publish(callId, mapper.toLastChunk(call));
+            publisher.publish(testId, mapper.toLastChunk(call));
             call = transition(call, CallStatus.RELEASED);
-            repo.deleteTimerId(callId);
+            repo.deleteTimerId(testId);
             Counter.builder("phonesim.calls.released")
                     .tag("reason", "duration_elapsed")
                     .register(meters).increment();
@@ -136,8 +150,8 @@ public class CallService {
         }
     }
 
-    public Call findOrThrow(UUID callId) {
-        return repo.findById(callId).orElseThrow(() -> new CallNotFoundException(callId));
+    public Call findOrThrow(String testId) {
+        return repo.findById(testId).orElseThrow(() -> new CallNotFoundException(testId));
     }
 
     public List<Call> listByStatus(CallStatus status) {

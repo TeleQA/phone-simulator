@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/calls")
@@ -41,9 +40,9 @@ public class VoiceCallController {
         return accept(placeVoice(Direction.MT, req));
     }
 
-    @GetMapping("/{callId}")
-    public CallSnapshotResponse snapshot(@PathVariable UUID callId) {
-        return CallSnapshotResponse.from(callService.findOrThrow(callId));
+    @GetMapping("/{testId}")
+    public CallSnapshotResponse snapshot(@PathVariable String testId) {
+        return CallSnapshotResponse.from(callService.findOrThrow(testId));
     }
 
     @GetMapping
@@ -56,7 +55,7 @@ public class VoiceCallController {
     private Call placeVoice(Direction direction, PlaceVoiceCallRequest req) {
         boolean roaming = req.roaming() != null && req.roaming();
         return callService.placeVoice(
-                direction,
+                req.testId(), direction,
                 req.callingParty(), req.calledParty(), req.imsi(),
                 req.mscNumber(), req.vlrAddress(), req.lac(), req.cellId(),
                 req.durationSeconds(), roaming, req.serviceKey(), req.callbackUrl()
@@ -64,7 +63,7 @@ public class VoiceCallController {
     }
 
     private ResponseEntity<CallAcceptedResponse> accept(Call call) {
-        String self = "/api/v1/calls/" + call.callId();
+        String self = "/api/v1/calls/" + call.testId();
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(CallAcceptedResponse.from(call, self));
     }

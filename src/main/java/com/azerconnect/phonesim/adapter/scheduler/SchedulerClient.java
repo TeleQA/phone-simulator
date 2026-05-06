@@ -49,17 +49,17 @@ public class SchedulerClient {
                 .register(meters);
     }
 
-    public TimerResponse enqueueRelease(UUID timerId, UUID callId, long delayMs) {
+    public TimerResponse enqueueRelease(UUID timerId, String testId, long delayMs) {
         Timer.Sample sample = Timer.start();
         try {
-            FireEvent fire = new FireEvent(callId, "RELEASE", 1);
+            FireEvent fire = new FireEvent(testId, FireEvent.EVENT_RELEASE, 1);
             String payloadB64 = Base64.getEncoder().encodeToString(toJsonBytes(fire));
 
             Map<String, Object> body = Map.of(
                     "id", timerId.toString(),
                     "delay_ms", delayMs,
                     "kafka_topic", kafkaProps.timerTopic(),
-                    "partition_key", callId.toString(),
+                    "partition_key", testId,
                     "payload", payloadB64
             );
 
@@ -69,7 +69,7 @@ public class SchedulerClient {
                     .retrieve()
                     .body(TimerResponse.class);
         } catch (RestClientException e) {
-            log.error("Scheduler enqueue failed callId={} delayMs={}: {}", callId, delayMs, e.getMessage());
+            log.error("Scheduler enqueue failed testId={} delayMs={}: {}", testId, delayMs, e.getMessage());
             throw e;
         } finally {
             sample.stop(enqueueTimer);

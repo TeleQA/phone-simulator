@@ -1,6 +1,6 @@
 package com.azerconnect.phonesim.service;
 
-import com.azerconnect.phonesim.adapter.amqp.CallRecordPayload;
+import com.azerconnect.phonesim.adapter.kafka.CallRecordPayload;
 import com.azerconnect.phonesim.config.DefaultsProps;
 import com.azerconnect.phonesim.domain.Call;
 import com.azerconnect.phonesim.domain.CallKind;
@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,7 +77,7 @@ class CallRecordMapperTest {
     private Call sampleCall(CallKind kind, Direction direction) {
         Instant now = Instant.now();
         return new Call(
-                UUID.randomUUID(),
+                "test-001",
                 kind,
                 direction,
                 CallStatus.PENDING,

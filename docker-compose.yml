@@ -1,19 +1,4 @@
 services:
-  rabbitmq:
-    image: rabbitmq:3.13-management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: simulatormq
-      RABBITMQ_DEFAULT_PASS: changeit
-      RABBITMQ_DEFAULT_VHOST: call-simulator-vhost
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     ports:

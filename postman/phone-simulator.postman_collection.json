@@ -1,0 +1,434 @@
+{
+  "info": {
+    "name": "phone-simulator",
+    "description": "REST API for the phone-simulator service. Drive voice calls (MO/MT) and SMS (MO/MT) through the AI Call Simulator Agent platform.\n\n**Variables**\n- `baseUrl` — phone-simulator base URL (default `http://localhost:8081`).\n- `testId` — auto-set from each create request's response.\n- `webhookId` — auto-set after registering a fallback webhook.\n\nEvery POST returns `202 Accepted` and echoes the `testId` you supplied. Use the same `testId` to fetch the snapshot via `GET /api/v1/calls/{testId}`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081", "type": "string" },
+    { "key": "testId", "value": "", "type": "string" },
+    { "key": "webhookId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Voice calls",
+      "item": [
+        {
+          "name": "Place voice MO call",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/voice/mo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "voice", "mo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"voice-mo-{{$timestamp}}\",\n  \"callingParty\": \"994501112233\",\n  \"calledParty\":  \"994504445566\",\n  \"imsi\":         \"400040000000001\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1,\n  \"durationSeconds\": 15,\n  \"callbackUrl\": \"http://localhost:9000/hook\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"echoes testId\", () => pm.expect(body.testId).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('testId', body.testId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place voice MT call",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/voice/mt",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "voice", "mt"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"voice-mt-{{$timestamp}}\",\n  \"callingParty\": \"994504445566\",\n  \"calledParty\":  \"994501112233\",\n  \"imsi\":         \"400040000000099\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1,\n  \"durationSeconds\": 30,\n  \"callbackUrl\": \"http://localhost:9000/hook\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('testId', pm.response.json().testId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place voice MO call (roaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/voice/mo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "voice", "mo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"voice-mo-roaming-{{$timestamp}}\",\n  \"callingParty\": \"994501112233\",\n  \"calledParty\":  \"447700900123\",\n  \"imsi\":         \"400040000000001\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"447700000099\",\n  \"lac\": 1,\n  \"cellId\": 1,\n  \"durationSeconds\": 20,\n  \"roaming\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('testId', pm.response.json().testId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SMS",
+      "item": [
+        {
+          "name": "Send SMS MO",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sms/mo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "sms", "mo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"sms-mo-{{$timestamp}}\",\n  \"callingParty\": \"994501112233\",\n  \"calledParty\":  \"994504445566\",\n  \"imsi\":         \"400040000000001\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('testId', pm.response.json().testId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send SMS MT",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sms/mt",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "sms", "mt"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"sms-mt-{{$timestamp}}\",\n  \"callingParty\": \"994504445566\",\n  \"calledParty\":  \"994501112233\",\n  \"imsi\":         \"400040000000099\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('testId', pm.response.json().testId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Queries",
+      "item": [
+        {
+          "name": "Get call snapshot",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/{{testId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "{{testId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"snapshot has expected fields\", () => {",
+                  "    pm.expect(body).to.have.property('testId');",
+                  "    pm.expect(body).to.have.property('state');",
+                  "    pm.expect(body).to.have.property('kind');",
+                  "    pm.expect(body).to.have.property('direction');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List active calls (ANSWERED)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls?state=ANSWERED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls"],
+              "query": [
+                { "key": "state", "value": "ANSWERED" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"returns array\", () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List released calls",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls?state=RELEASED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls"],
+              "query": [
+                { "key": "state", "value": "RELEASED" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Register fallback webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://localhost:9000/hook\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('webhookId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unregister fallback webhook",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "webhooks", "{{webhookId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error cases",
+      "item": [
+        {
+          "name": "Duplicate testId returns 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/voice/mo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "voice", "mo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testId\": \"{{testId}}\",\n  \"callingParty\": \"994501112233\",\n  \"calledParty\":  \"994504445566\",\n  \"imsi\":         \"400040000000001\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1,\n  \"durationSeconds\": 5\n}"
+            },
+            "description": "Re-uses the testId saved by the previous voice MO request — expects 409 Conflict because the previous call's record still exists in Redis (within its TTL)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 Conflict\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"error code is duplicate_test_id\", () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('duplicate_test_id');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing testId returns 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/voice/mo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "voice", "mo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callingParty\": \"994501112233\",\n  \"calledParty\":  \"994504445566\",\n  \"imsi\":         \"400040000000001\",\n  \"mscNumber\":    \"994700000001\",\n  \"vlrAddress\":   \"994700000002\",\n  \"lac\": 1,\n  \"cellId\": 1,\n  \"durationSeconds\": 5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown testId returns 404",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calls/does-not-exist-xyz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calls", "does-not-exist-xyz"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 Not Found\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health & docs",
+      "item": [
+        {
+          "name": "Liveness/health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/actuator/prometheus",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "prometheus"]
+            }
+          }
+        },
+        {
+          "name": "OpenAPI spec",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["v3", "api-docs"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

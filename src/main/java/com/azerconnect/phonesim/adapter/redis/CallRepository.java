@@ -27,36 +27,40 @@ public class CallRepository {
         this.props = props;
     }
 
-    public void save(Call call) {
+    /** Atomically creates the call key — returns false if testId already exists. */
+    public boolean saveIfAbsent(Call call) {
         try {
             String json = mapper.writeValueAsString(call);
-            String key = key(call.callId());
+            String key = key(call.testId());
             Duration ttl = props.callTtl().plusSeconds(call.durationSeconds());
-            redis.opsForValue().set(key, json, ttl);
-            redis.opsForZSet().add("calls:active", call.callId().toString(),
-                    call.lastTransitionAt() != null ? call.lastTransitionAt().toEpochMilli() : 0);
-            // remove from any prior state index, add to current
-            for (CallStatus s : CallStatus.values()) {
-                if (s != call.status()) {
-                    redis.opsForSet().remove("calls:by-state:" + s, call.callId().toString());
-                }
-            }
-            redis.opsForSet().add("calls:by-state:" + call.status(), call.callId().toString());
-            if (call.status().isTerminal()) {
-                redis.opsForZSet().remove("calls:active", call.callId().toString());
-            }
+            Boolean created = redis.opsForValue().setIfAbsent(key, json, ttl);
+            if (Boolean.FALSE.equals(created)) return false;
+            indexCall(call);
+            return true;
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to serialize call " + call.callId(), e);
+            throw new IllegalStateException("Failed to serialize call " + call.testId(), e);
         }
     }
 
-    public Optional<Call> findById(UUID callId) {
-        String json = redis.opsForValue().get(key(callId));
+    public void save(Call call) {
+        try {
+            String json = mapper.writeValueAsString(call);
+            String key = key(call.testId());
+            Duration ttl = props.callTtl().plusSeconds(call.durationSeconds());
+            redis.opsForValue().set(key, json, ttl);
+            indexCall(call);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize call " + call.testId(), e);
+        }
+    }
+
+    public Optional<Call> findById(String testId) {
+        String json = redis.opsForValue().get(key(testId));
         if (json == null) return Optional.empty();
         try {
             return Optional.of(mapper.readValue(json, Call.class));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to deserialize call " + callId, e);
+            throw new IllegalStateException("Failed to deserialize call " + testId, e);
         }
     }
 
@@ -64,7 +68,7 @@ public class CallRepository {
         Set<String> ids = redis.opsForSet().members("calls:by-state:" + status);
         if (ids == null || ids.isEmpty()) return List.of();
         return ids.stream()
-                .map(id -> findById(UUID.fromString(id)))
+                .map(this::findById)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .toList();
@@ -75,21 +79,34 @@ public class CallRepository {
         return count == null ? 0L : count;
     }
 
-    public void saveTimerId(UUID callId, UUID timerId) {
-        redis.opsForValue().set("timer:" + callId, timerId.toString(),
-                props.callTtl());
+    public void saveTimerId(String testId, UUID timerId) {
+        redis.opsForValue().set("timer:" + testId, timerId.toString(), props.callTtl());
     }
 
-    public Optional<UUID> findTimerId(UUID callId) {
-        String value = redis.opsForValue().get("timer:" + callId);
+    public Optional<UUID> findTimerId(String testId) {
+        String value = redis.opsForValue().get("timer:" + testId);
         return value == null ? Optional.empty() : Optional.of(UUID.fromString(value));
     }
 
-    public void deleteTimerId(UUID callId) {
-        redis.delete("timer:" + callId);
+    public void deleteTimerId(String testId) {
+        redis.delete("timer:" + testId);
     }
 
-    private static String key(UUID callId) {
-        return "call:" + callId;
+    private void indexCall(Call call) {
+        redis.opsForZSet().add("calls:active", call.testId(),
+                call.lastTransitionAt() != null ? call.lastTransitionAt().toEpochMilli() : 0);
+        for (CallStatus s : CallStatus.values()) {
+            if (s != call.status()) {
+                redis.opsForSet().remove("calls:by-state:" + s, call.testId());
+            }
+        }
+        redis.opsForSet().add("calls:by-state:" + call.status(), call.testId());
+        if (call.status().isTerminal()) {
+            redis.opsForZSet().remove("calls:active", call.testId());
+        }
+    }
+
+    private static String key(String testId) {
+        return "call:" + testId;
     }
 }

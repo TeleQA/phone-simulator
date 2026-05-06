@@ -18,7 +18,7 @@ import java.util.UUID;
 public class MdcFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID = "requestId";
-    public static final String CALL_ID = "callId";
+    public static final String TEST_ID = "testId";
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp,
@@ -33,7 +33,7 @@ public class MdcFilter extends OncePerRequestFilter {
             chain.doFilter(req, resp);
         } finally {
             MDC.remove(REQUEST_ID);
-            MDC.remove(CALL_ID);
+            MDC.remove(TEST_ID);
         }
     }
 }

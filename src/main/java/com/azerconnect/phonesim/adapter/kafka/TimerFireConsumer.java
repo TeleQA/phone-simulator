@@ -24,22 +24,22 @@ public class TimerFireConsumer {
             containerFactory = "fireEventListenerFactory"
     )
     public void onFire(FireEvent event, Acknowledgment ack) {
-        if (event == null || event.callId() == null) {
+        if (event == null || event.testId() == null || event.testId().isBlank()) {
             log.warn("Received empty/invalid FireEvent — discarding");
             ack.acknowledge();
             return;
         }
-        MDC.put("callId", event.callId().toString());
+        MDC.put("testId", event.testId());
         try {
-            callService.onTimerFire(event.callId(), event.eventType());
+            callService.onTimerFire(event.testId(), event.eventType());
             ack.acknowledge();
         } catch (RuntimeException e) {
-            log.error("Failed processing timer fire for callId={}: {}", event.callId(), e.getMessage(), e);
-            // ack regardless to avoid poison-pill loop; transitional state failures are
-            // surfaced via metrics + webhook FAILED event
+            log.error("Failed processing timer fire for testId={}: {}", event.testId(), e.getMessage(), e);
+            // ack regardless to avoid poison-pill loop; transitional state failures surface
+            // via metrics + webhook FAILED event
             ack.acknowledge();
         } finally {
-            MDC.remove("callId");
+            MDC.remove("testId");
         }
     }
 }

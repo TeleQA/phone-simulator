@@ -1,9 +1,7 @@
 package com.azerconnect.phonesim.adapter.kafka;
 
-import java.util.UUID;
-
 public record FireEvent(
-        UUID callId,
+        String testId,
         String eventType,
         int schemaVersion
 ) {
