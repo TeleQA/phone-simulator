@@ -4,6 +4,9 @@ Phone Simulator service for the AI Call Simulator Agent platform. Exposes a REST
 
 ## Architecture
 
+> Component + sequence diagrams (TeleQA ↔ phone-simulator ↔ Scheduler ↔ CAP simulator) live in [`docs/architecture.md`](docs/architecture.md).
+
+
 ```
 [AI QA Agent] --REST--> [phone-simulator] --Kafka--> [CAP simulator]
                               |     (topic: call-event-queue, key: testId)
