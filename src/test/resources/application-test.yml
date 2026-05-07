@@ -11,6 +11,7 @@ phonesim:
     timer-topic: phonesim.timers.v1
     call-event-topic: call-event-queue
     answer-event-topic: cap.answer-events.v1
+    hangup-event-topic: phonesim.hangup-events.v1
   call:
     no-answer-timeout: 30s
   defaults:

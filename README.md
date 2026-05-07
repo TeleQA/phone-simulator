@@ -27,8 +27,10 @@ State for active calls is kept in Redis, keyed by **`testId`** — the caller-su
 2. Phone-simulator publishes the `INITIAL` `CallRecord` to the call-event Kafka topic and arms a **no-answer guard timer** with the scheduler (default: 30 s, configurable via `phonesim.call.no-answer-timeout`). State settles on `RINGING`. **The duration timer is NOT yet running.**
 3. CAP simulator publishes an `AnswerEvent` to `cap.answer-events.v1` (key = `testId`) once it has acknowledged the answer toward the SCP.
 4. Phone-simulator's `AnswerEventConsumer` cancels the no-answer guard, transitions `RINGING → ANSWERED`, **then** enqueues the duration timer (`durationSeconds × 1000` ms).
-5. Duration timer fires → phone-simulator publishes `LAST_CHUNK` and transitions to `RELEASED`.
-6. If the no-answer guard fires before the AnswerEvent arrives, the call is moved to `FAILED` with reason `no_answer_timeout`.
+5. Duration timer fires → phone-simulator publishes a `HangupEvent` (the simulated subscriber pressed "End call") on `phonesim.hangup-events.v1` and transitions to `RELEASED`. CAP receives the HangupEvent and emits the final `ApplyChargingReport` + `O_DISCONNECT` toward the SCP.
+6. If the no-answer guard fires before the AnswerEvent arrives, the call is moved to `FAILED` with reason `no_answer_timeout`. No `HangupEvent` is published in this case (the call never reached `ANSWERED`).
+
+> **Phone-simulator does not chunk.** It publishes exactly one `INITIAL` and (for answered calls) exactly one `HangupEvent`. ApplyChargingReport chunking, intermediate billing chunks, and `LAST_CHUNK` accounting toward the SCP are entirely owned by the CAP simulator.
 
 ### `AnswerEvent` wire contract (Kafka topic `cap.answer-events.v1`)
 
@@ -42,6 +44,19 @@ State for active calls is kept in Redis, keyed by **`testId`** — the caller-su
 ```
 
 Message key on Kafka must be the `testId` so partitioning lines up with the call-event topic. `answeredAt` and `answerType` are informational (logged + emitted as Micrometer tags); ordering is what matters.
+
+### `HangupEvent` wire contract (Kafka topic `phonesim.hangup-events.v1`)
+
+```json
+{
+  "testId": "voice-mo-...",
+  "reason": "USER_HANGUP",
+  "hungUpAt": "2026-05-06T12:00:15Z",
+  "schemaVersion": 1
+}
+```
+
+Message key on Kafka MUST be the `testId`. `reason=USER_HANGUP` covers the duration-timer-fired case; future reason codes can be added without breaking consumers.
 
 ## Quick start
 
@@ -151,6 +166,7 @@ Key properties — all overridable via env vars:
 | `phonesim.kafka.timer-topic` | — | `phonesim.timers.v1` |
 | `phonesim.kafka.call-event-topic` | `PHONESIM_CALL_EVENT_TOPIC` | `call-event-queue` |
 | `phonesim.kafka.answer-event-topic` | `PHONESIM_ANSWER_EVENT_TOPIC` | `cap.answer-events.v1` |
+| `phonesim.kafka.hangup-event-topic` | `PHONESIM_HANGUP_EVENT_TOPIC` | `phonesim.hangup-events.v1` |
 | `phonesim.call.no-answer-timeout` | — | `30s` |
 | `phonesim.defaults.voice-mo-service-key` | — | `201` |
 | `phonesim.defaults.voice-mo-roaming-service-key` | — | `200` |

@@ -112,22 +112,35 @@ class VoiceMoIntegrationTest {
                     assertThat(callRepo.findById(testId).orElseThrow().status())
                             .isEqualTo(CallStatus.ANSWERED));
 
-            // 4) Simulate the duration timer firing. Phone-simulator publishes LAST_CHUNK
-            //    and transitions to RELEASED.
-            FireEvent fire = new FireEvent(testId, FireEvent.EVENT_RELEASE, 1);
-            try (KafkaProducer<String, byte[]> producer = newProducer()) {
-                producer.send(new ProducerRecord<>(
-                        kafkaProps.timerTopic(),
-                        testId,
-                        mapper.writeValueAsBytes(fire))).get(5, TimeUnit.SECONDS);
-            }
-            await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
-                    assertThat(callRepo.findById(testId).orElseThrow().status())
-                            .isEqualTo(CallStatus.RELEASED));
+            // 4) Simulate the duration timer firing. Phone-simulator publishes a HangupEvent
+            //    (the simulated subscriber pressed "End call") and transitions to RELEASED.
+            //    No further messages on the call-event topic — CAP owns chunking on its side.
+            try (KafkaConsumer<String, byte[]> hangupConsumer = newKafkaConsumer(
+                    "phonesim-test-hangup-event-" + UUID.randomUUID())) {
+                hangupConsumer.subscribe(List.of(kafkaProps.hangupEventTopic()));
+                hangupConsumer.poll(Duration.ofMillis(500));
 
-            JsonNode lastChunkJson = pollOne(callEventConsumer, testId);
-            assertThat(lastChunkJson.get("callState").asText())
-                    .isEqualTo(CallRecordPayload.STATE_LAST_CHUNK);
+                FireEvent fire = new FireEvent(testId, FireEvent.EVENT_RELEASE, 1);
+                try (KafkaProducer<String, byte[]> producer = newProducer()) {
+                    producer.send(new ProducerRecord<>(
+                            kafkaProps.timerTopic(),
+                            testId,
+                            mapper.writeValueAsBytes(fire))).get(5, TimeUnit.SECONDS);
+                }
+                await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
+                        assertThat(callRepo.findById(testId).orElseThrow().status())
+                                .isEqualTo(CallStatus.RELEASED));
+
+                JsonNode hangupJson = pollOne(hangupConsumer, testId);
+                assertThat(hangupJson.get("reason").asText()).isEqualTo("USER_HANGUP");
+                assertThat(hangupJson.get("testId").asText()).isEqualTo(testId);
+            }
+
+            // No further call-event message should appear (no LAST_CHUNK from phone-simulator).
+            ConsumerRecords<String, byte[]> tail = callEventConsumer.poll(Duration.ofMillis(500));
+            for (ConsumerRecord<String, byte[]> r : tail) {
+                assertThat(r.key()).isNotEqualTo(testId);
+            }
         }
     }
 
@@ -207,9 +220,13 @@ class VoiceMoIntegrationTest {
     }
 
     private KafkaConsumer<String, byte[]> newCallEventConsumer() {
+        return newKafkaConsumer("phonesim-test-call-event-" + UUID.randomUUID());
+    }
+
+    private KafkaConsumer<String, byte[]> newKafkaConsumer(String groupId) {
         Properties p = new Properties();
         p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, IntegrationTestSupport.KAFKA.getBootstrapServers());
-        p.put(ConsumerConfig.GROUP_ID_CONFIG, "phonesim-test-call-event-" + UUID.randomUUID());
+        p.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         p.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         p.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());

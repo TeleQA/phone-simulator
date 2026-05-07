@@ -39,21 +39,4 @@ public class CallRecordMapper {
                 CallRecordPayload.STATE_INITIAL
         );
     }
-
-    public CallRecordPayload toLastChunk(Call call) {
-        return new CallRecordPayload(
-                call.serviceKey(),
-                call.kind() == CallKind.SMS,
-                call.direction() == Direction.MT,
-                call.callingParty(),
-                call.calledParty(),
-                call.imsi(),
-                call.mscNumber(),
-                call.vlrAddress(),
-                call.lac(),
-                call.cellId(),
-                call.durationSeconds(),
-                CallRecordPayload.STATE_LAST_CHUNK
-        );
-    }
 }

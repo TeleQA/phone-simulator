@@ -33,6 +33,7 @@ phonesim:
     timer-topic: phonesim.timers.v1
     call-event-topic: ${PHONESIM_CALL_EVENT_TOPIC:call-event-queue}
     answer-event-topic: ${PHONESIM_ANSWER_EVENT_TOPIC:cap.answer-events.v1}
+    hangup-event-topic: ${PHONESIM_HANGUP_EVENT_TOPIC:phonesim.hangup-events.v1}
     listener-concurrency: 4
   call:
     no-answer-timeout: 30s

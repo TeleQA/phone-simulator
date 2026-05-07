@@ -18,6 +18,11 @@ public record CallRecordPayload(
         @JsonProperty("callDuration") int callDuration,
         @JsonProperty("callState") String callState
 ) {
+    /**
+     * Phone-simulator only ever publishes records in the {@code INITIAL} state — i.e. it tells
+     * the CAP simulator "the subscriber is dialling". CAP owns ANSWER, ApplyChargingReport
+     * chunking, and LAST_CHUNK accounting on its side; phone-simulator signals call termination
+     * via a separate {@link HangupEvent}, not by re-publishing this payload.
+     */
     public static final String STATE_INITIAL = "INITIAL";
-    public static final String STATE_LAST_CHUNK = "LAST_CHUNK";
 }

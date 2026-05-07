@@ -2,6 +2,8 @@ package com.azerconnect.phonesim.service;
 
 import com.azerconnect.phonesim.adapter.kafka.CallEventPublisher;
 import com.azerconnect.phonesim.adapter.kafka.FireEvent;
+import com.azerconnect.phonesim.adapter.kafka.HangupEvent;
+import com.azerconnect.phonesim.adapter.kafka.HangupEventPublisher;
 import com.azerconnect.phonesim.adapter.redis.CallRepository;
 import com.azerconnect.phonesim.adapter.scheduler.SchedulerClient;
 import com.azerconnect.phonesim.adapter.webhook.CallEvent;
@@ -35,8 +37,10 @@ import java.util.UUID;
  *       {@link com.azerconnect.phonesim.adapter.kafka.AnswerEvent} on the answer-event topic.</li>
  *   <li>{@link #onAnswer(String, String)} cancels the guard timer, transitions
  *       {@code RINGING → ANSWERED}, then enqueues the duration timer.</li>
- *   <li>{@link #onTimerFire(String, String)} with {@code RELEASE} publishes
- *       {@code LAST_CHUNK} and transitions to {@code RELEASED}.</li>
+ *   <li>{@link #onTimerFire(String, String)} with {@code RELEASE} publishes a
+ *       {@link com.azerconnect.phonesim.adapter.kafka.HangupEvent} (subscriber pressed "End call")
+ *       and transitions to {@code RELEASED}. The CAP simulator owns ApplyChargingReport
+ *       chunking and the final disconnect toward the SCP — phone-simulator does not chunk.</li>
  *   <li>If the no-answer guard fires before the AnswerEvent, the call is moved
  *       to {@code FAILED} with reason {@code no_answer_timeout}.</li>
  * </ol>
@@ -52,6 +56,7 @@ public class CallService {
     private final CallRepository repo;
     private final CallRecordMapper mapper;
     private final CallEventPublisher publisher;
+    private final HangupEventPublisher hangupPublisher;
     private final SchedulerClient scheduler;
     private final WebhookDispatcher webhooks;
     private final CallProps callProps;
@@ -60,6 +65,7 @@ public class CallService {
     public CallService(CallRepository repo,
                        CallRecordMapper mapper,
                        CallEventPublisher publisher,
+                       HangupEventPublisher hangupPublisher,
                        SchedulerClient scheduler,
                        WebhookDispatcher webhooks,
                        CallProps callProps,
@@ -67,6 +73,7 @@ public class CallService {
         this.repo = repo;
         this.mapper = mapper;
         this.publisher = publisher;
+        this.hangupPublisher = hangupPublisher;
         this.scheduler = scheduler;
         this.webhooks = webhooks;
         this.callProps = callProps;
@@ -219,7 +226,8 @@ public class CallService {
             return;
         }
         try {
-            publisher.publish(testId, mapper.toLastChunk(call));
+            // Phone-simulator hangs up — CAP owns chunking and final ACR/DISCONNECT toward SCP.
+            hangupPublisher.publish(testId, HangupEvent.userHangup(testId));
             call = transition(call, CallStatus.RELEASED);
             repo.deleteDurationTimerId(testId);
             Counter.builder("phonesim.calls.released")

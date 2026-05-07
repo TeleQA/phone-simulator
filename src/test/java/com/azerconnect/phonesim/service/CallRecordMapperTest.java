@@ -60,10 +60,10 @@ class CallRecordMapperTest {
     }
 
     @Test
-    void lastChunkPayloadHasLastChunkState() {
+    void mtPayloadFlagsMtCall() {
         Call call = sampleCall(CallKind.VOICE, Direction.MT);
-        CallRecordPayload payload = mapper.toLastChunk(call);
-        assertThat(payload.callState()).isEqualTo("LAST_CHUNK");
+        CallRecordPayload payload = mapper.toInitial(call);
+        assertThat(payload.callState()).isEqualTo("INITIAL");
         assertThat(payload.mtCall()).isTrue();
     }
 
