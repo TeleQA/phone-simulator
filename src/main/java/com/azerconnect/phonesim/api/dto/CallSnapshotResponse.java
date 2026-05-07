@@ -4,11 +4,10 @@ import com.azerconnect.phonesim.domain.Call;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CallSnapshotResponse(
-        UUID callId,
+        String testId,
         String kind,
         String direction,
         String state,
@@ -23,7 +22,7 @@ public record CallSnapshotResponse(
 ) {
     public static CallSnapshotResponse from(Call call) {
         return new CallSnapshotResponse(
-                call.callId(),
+                call.testId(),
                 call.kind().name(),
                 call.direction().name(),
                 call.status().name(),

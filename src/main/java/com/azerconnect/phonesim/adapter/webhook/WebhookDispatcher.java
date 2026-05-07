@@ -57,7 +57,7 @@ public class WebhookDispatcher {
         Optional<String> targetUrl = chooseUrl(perCallUrl);
         if (targetUrl.isEmpty()) {
             log.debug("No webhook URL configured for callId={} eventType={} — skipping",
-                    event.callId(), event.eventType());
+                    event.testId(), event.eventType());
             return;
         }
         virtualThreads.execute(() -> deliver(targetUrl.get(), event));
@@ -78,7 +78,7 @@ public class WebhookDispatcher {
             if (!acquired) {
                 failuresCounter.increment();
                 log.error("webhook.failed reason=semaphore-timeout callId={} eventType={} url={}",
-                        event.callId(), event.eventType(), url);
+                        event.testId(), event.eventType(), url);
                 return;
             }
             doDeliverWithRetry(url, event);
@@ -109,14 +109,14 @@ public class WebhookDispatcher {
                 if (status >= 400 && status < 500 && status != 429) {
                     failuresCounter.increment();
                     log.error("webhook.failed reason=client-{} callId={} eventType={} url={}",
-                            status, event.callId(), event.eventType(), url);
+                            status, event.testId(), event.eventType(), url);
                     sample.stop(deliverTimer);
                     return;
                 }
                 if (attempt > props.maxRetries()) {
                     failuresCounter.increment();
                     log.error("webhook.failed reason=retries-exhausted attempts={} callId={} eventType={} url={}",
-                            attempt, event.callId(), event.eventType(), url);
+                            attempt, event.testId(), event.eventType(), url);
                     sample.stop(deliverTimer);
                     return;
                 }
@@ -124,7 +124,7 @@ public class WebhookDispatcher {
                 if (attempt > props.maxRetries()) {
                     failuresCounter.increment();
                     log.error("webhook.failed reason=io attempts={} callId={} eventType={} url={} err={}",
-                            attempt, event.callId(), event.eventType(), url, e.getMessage());
+                            attempt, event.testId(), event.eventType(), url, e.getMessage());
                     sample.stop(deliverTimer);
                     return;
                 }

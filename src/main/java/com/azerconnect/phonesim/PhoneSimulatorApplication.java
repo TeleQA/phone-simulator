@@ -1,6 +1,6 @@
 package com.azerconnect.phonesim;
 
-import com.azerconnect.phonesim.config.AmqpProps;
+import com.azerconnect.phonesim.config.CallProps;
 import com.azerconnect.phonesim.config.DefaultsProps;
 import com.azerconnect.phonesim.config.KafkaProps;
 import com.azerconnect.phonesim.config.RedisProps;
@@ -14,12 +14,12 @@ import org.springframework.retry.annotation.EnableRetry;
 @SpringBootApplication
 @EnableRetry
 @EnableConfigurationProperties({
-        AmqpProps.class,
         SchedulerProps.class,
         KafkaProps.class,
         DefaultsProps.class,
         RedisProps.class,
-        WebhookProps.class
+        WebhookProps.class,
+        CallProps.class
 })
 public class PhoneSimulatorApplication {
     public static void main(String[] args) {

@@ -1,6 +1,6 @@
 package com.azerconnect.phonesim.service;
 
-import com.azerconnect.phonesim.adapter.amqp.CallRecordPayload;
+import com.azerconnect.phonesim.adapter.kafka.CallRecordPayload;
 import com.azerconnect.phonesim.config.DefaultsProps;
 import com.azerconnect.phonesim.domain.Call;
 import com.azerconnect.phonesim.domain.CallKind;

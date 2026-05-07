@@ -1,25 +1,51 @@
 # phone-simulator
 
-Phone Simulator service for the AI Call Simulator Agent platform. Exposes a REST API the AI QA Agent calls to make voice calls and send SMS; drives the GSM CAP simulator via RabbitMQ; externalises call-duration timers to the High-Performance Scheduler.
+Phone Simulator service for the AI Call Simulator Agent platform. Exposes a REST API the AI QA Agent calls to make voice calls and send SMS; drives the GSM CAP simulator via Kafka; externalises call-duration timers to the High-Performance Scheduler.
 
 ## Architecture
 
 ```
-[AI QA Agent] --REST--> [phone-simulator] --AMQP--> [CAP simulator]
-                              |     (queue: call-event-queue)
+[AI QA Agent] --REST--> [phone-simulator] --Kafka--> [CAP simulator]
+                              |     (topic: call-event-queue, key: testId)
+                              |
+                              |     <----- Kafka cap.answer-events.v1 -----
+                              |              (CAP publishes when ANSWER goes to SCP)
+                              |
                               +--POST /v1/timers--> [scheduler]
                               <-- Kafka phonesim.timers.v1 --
                               --POST callback--> [QA webhook]
 ```
 
-State for active calls is kept in Redis. Spring Boot 3 / Java 21 with virtual threads.
+State for active calls is kept in Redis, keyed by **`testId`** — the caller-supplied identifier in every request. There is no server-generated callId. Spring Boot 3 / Java 21 with virtual threads.
+
+### Voice call lifecycle (answer-driven)
+
+1. `POST /api/v1/calls/voice/{mo,mt}` → `PENDING → DIALING`.
+2. Phone-simulator publishes the `INITIAL` `CallRecord` to the call-event Kafka topic and arms a **no-answer guard timer** with the scheduler (default: 30 s, configurable via `phonesim.call.no-answer-timeout`). State settles on `RINGING`. **The duration timer is NOT yet running.**
+3. CAP simulator publishes an `AnswerEvent` to `cap.answer-events.v1` (key = `testId`) once it has acknowledged the answer toward the SCP.
+4. Phone-simulator's `AnswerEventConsumer` cancels the no-answer guard, transitions `RINGING → ANSWERED`, **then** enqueues the duration timer (`durationSeconds × 1000` ms).
+5. Duration timer fires → phone-simulator publishes `LAST_CHUNK` and transitions to `RELEASED`.
+6. If the no-answer guard fires before the AnswerEvent arrives, the call is moved to `FAILED` with reason `no_answer_timeout`.
+
+### `AnswerEvent` wire contract (Kafka topic `cap.answer-events.v1`)
+
+```json
+{
+  "testId": "voice-mo-...",
+  "answerType": "O_ANSWER" | "T_ANSWER",
+  "answeredAt": "2026-05-06T12:00:00Z",
+  "schemaVersion": 1
+}
+```
+
+Message key on Kafka must be the `testId` so partitioning lines up with the call-event topic. `answeredAt` and `answerType` are informational (logged + emitted as Micrometer tags); ordering is what matters.
 
 ## Quick start
 
 Requires Docker.
 
 ```bash
-docker compose up -d                 # rabbitmq, redis, redpanda, postgres
+docker compose up -d                 # redis, redpanda (Kafka), postgres
 ./mvnw spring-boot:run               # runs on :8081
 ```
 
@@ -29,13 +55,23 @@ OpenAPI docs: `http://localhost:8081/swagger-ui.html`. Prometheus metrics: `/act
 
 ## REST API (`/api/v1`)
 
+Every call/SMS request must include a unique `testId` (string, `[A-Za-z0-9_-]{1,64}`). The same `testId` is used as:
+
+- the Redis key (`call:{testId}`)
+- the Kafka message key on the call-event topic (so CAP-simulator partitions per test)
+- the `partition_key` and embedded correlation id on the scheduler timer fire payload
+- the path variable on `GET /api/v1/calls/{testId}`
+- the `testId` field on every webhook event
+
+Posting twice with the same `testId` returns `409 Conflict` until the previous record's TTL expires.
+
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/calls/voice/mo` | Place voice MO call → `202` + callId |
-| `POST` | `/calls/voice/mt` | Place voice MT call → `202` + callId |
-| `POST` | `/sms/mo` | Send SMS MO → `202` + callId |
-| `POST` | `/sms/mt` | Send SMS MT → `202` + callId |
-| `GET` | `/calls/{callId}` | Snapshot of one call |
+| `POST` | `/calls/voice/mo` | Place voice MO call → `202` + testId |
+| `POST` | `/calls/voice/mt` | Place voice MT call → `202` + testId |
+| `POST` | `/sms/mo` | Send SMS MO → `202` + testId |
+| `POST` | `/sms/mt` | Send SMS MT → `202` + testId |
+| `GET` | `/calls/{testId}` | Snapshot of one call |
 | `GET` | `/calls?state=ANSWERED` | List calls in a given state |
 | `POST` | `/webhooks` | Register a fallback webhook URL |
 | `DELETE` | `/webhooks/{id}` | Unregister fallback |
@@ -48,15 +84,16 @@ Voice MO:
 curl -X POST localhost:8081/api/v1/calls/voice/mo \
   -H 'Content-Type: application/json' \
   -d '{
-    "callingParty": "994501112233",
-    "calledParty":  "994504445566",
-    "imsi":         "400040000000001",
-    "mscNumber":    "994700000001",
-    "vlrAddress":   "994700000002",
+    "testId":         "regression-roaming-mt-001",
+    "callingParty":   "994501112233",
+    "calledParty":    "994504445566",
+    "imsi":           "400040000000001",
+    "mscNumber":      "994700000001",
+    "vlrAddress":     "994700000002",
     "lac": 1,
     "cellId": 1,
     "durationSeconds": 15,
-    "callbackUrl": "http://localhost:9000/hook"
+    "callbackUrl":    "http://localhost:9000/hook"
   }'
 ```
 
@@ -66,11 +103,12 @@ SMS MO:
 curl -X POST localhost:8081/api/v1/sms/mo \
   -H 'Content-Type: application/json' \
   -d '{
-    "callingParty": "994501112233",
-    "calledParty":  "994504445566",
-    "imsi":         "400040000000001",
-    "mscNumber":    "994700000001",
-    "vlrAddress":   "994700000002",
+    "testId":         "sms-smoke-001",
+    "callingParty":   "994501112233",
+    "calledParty":    "994504445566",
+    "imsi":           "400040000000001",
+    "mscNumber":      "994700000001",
+    "vlrAddress":     "994700000002",
     "lac": 1, "cellId": 1
   }'
 ```
@@ -78,7 +116,7 @@ curl -X POST localhost:8081/api/v1/sms/mo \
 Get call snapshot:
 
 ```bash
-curl localhost:8081/api/v1/calls/<callId>
+curl localhost:8081/api/v1/calls/regression-roaming-mt-001
 ```
 
 ### Webhook event schema
@@ -87,12 +125,12 @@ Posted to the per-request `callbackUrl` (or the registered fallback):
 
 ```json
 {
-  "eventId": "<uuid>",
-  "callId":  "<uuid>",
+  "eventId":   "<uuid>",
+  "testId":    "regression-roaming-mt-001",
   "eventType": "CALL_RELEASED",
-  "occurredAt": "2026-05-06T12:00:00Z",
-  "state": "RELEASED",
-  "data": { ...CallSnapshotResponse... }
+  "occurredAt":"2026-05-06T12:00:00Z",
+  "state":     "RELEASED",
+  "data":      { ...CallSnapshotResponse... }
 }
 ```
 
@@ -104,19 +142,27 @@ Key properties — all overridable via env vars:
 
 | Property | Env var | Default |
 |---|---|---|
-| `spring.rabbitmq.host` | `RABBIT_HOST` | `localhost` |
-| `spring.rabbitmq.virtual-host` | `RABBIT_VHOST` | `call-simulator-vhost` |
-| `spring.rabbitmq.username` | `RABBIT_USER` | `simulatormq` |
-| `spring.rabbitmq.password` | `RABBIT_PASSWORD` | `changeit` |
 | `spring.data.redis.host` | `REDIS_HOST` | `localhost` |
 | `spring.kafka.bootstrap-servers` | `KAFKA_BROKERS` | `localhost:9092` |
 | `phonesim.scheduler.base-url` | `SCHEDULER_URL` | `http://localhost:8080` |
 | `phonesim.kafka.timer-topic` | — | `phonesim.timers.v1` |
-| `phonesim.amqp.queue` | — | `call-event-queue` |
+| `phonesim.kafka.call-event-topic` | `PHONESIM_CALL_EVENT_TOPIC` | `call-event-queue` |
+| `phonesim.kafka.answer-event-topic` | `PHONESIM_ANSWER_EVENT_TOPIC` | `cap.answer-events.v1` |
+| `phonesim.call.no-answer-timeout` | — | `30s` |
 | `phonesim.defaults.voice-mo-service-key` | — | `201` |
 | `phonesim.defaults.voice-mo-roaming-service-key` | — | `200` |
 | `phonesim.defaults.voice-mt-service-key` | — | `101` |
 | `phonesim.defaults.sms-service-key` | — | `205` |
+
+### Postman collection
+
+Import [`postman/phone-simulator.postman_collection.json`](postman/phone-simulator.postman_collection.json) into Postman or run it via Newman:
+
+```bash
+newman run postman/phone-simulator.postman_collection.json --env-var baseUrl=http://localhost:8081
+```
+
+The collection covers every endpoint (voice MO/MT, SMS MO/MT, snapshot, list, webhook register/unregister, health/metrics) plus error cases (duplicate `testId` → 409, missing `testId` → 400, unknown `testId` → 404). Each create request auto-saves the returned `testId` to a collection variable so the snapshot/list requests can reuse it.
 
 ## Building & testing
 
@@ -135,9 +181,9 @@ src/main/java/com/azerconnect/phonesim/
 ├── domain/          Call, CallStatus, CallStateMachine
 ├── service/         CallService, CallRecordMapper
 ├── adapter/
-│   ├── amqp/        Publisher of CallRecord JSON to RabbitMQ
-│   ├── kafka/       FireEvent consumer (timer fires)
-│   ├── redis/       CallRepository, WebhookRepository
+│   ├── kafka/       CallEventPublisher (call-event-queue),
+│   │                TimerFireConsumer (phonesim.timers.v1)
+│   ├── redis/       CallRepository (keyed by testId), WebhookRepository
 │   ├── scheduler/   SchedulerClient (REST), health indicator
 │   └── webhook/     WebhookDispatcher (retrying outbound POSTs)
 └── config/          @ConfigurationProperties + filters + OpenAPI

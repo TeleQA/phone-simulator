@@ -9,34 +9,35 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 @Component
-public class TimerFireConsumer {
+public class AnswerEventConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(TimerFireConsumer.class);
+    private static final Logger log = LoggerFactory.getLogger(AnswerEventConsumer.class);
 
     private final CallService callService;
 
-    public TimerFireConsumer(CallService callService) {
+    public AnswerEventConsumer(CallService callService) {
         this.callService = callService;
     }
 
     @KafkaListener(
-            topics = "${phonesim.kafka.timer-topic}",
-            containerFactory = "fireEventListenerFactory"
+            topics = "${phonesim.kafka.answer-event-topic}",
+            containerFactory = "answerEventListenerFactory"
     )
-    public void onFire(FireEvent event, Acknowledgment ack) {
+    public void onAnswer(AnswerEvent event, Acknowledgment ack) {
         if (event == null || event.testId() == null || event.testId().isBlank()) {
-            log.warn("Received empty/invalid FireEvent — discarding");
+            log.warn("Received empty/invalid AnswerEvent — discarding");
             ack.acknowledge();
             return;
         }
         MDC.put("testId", event.testId());
         try {
-            callService.onTimerFire(event.testId(), event.eventType());
+            callService.onAnswer(event.testId(), event.answerType());
             ack.acknowledge();
         } catch (RuntimeException e) {
-            log.error("Failed processing timer fire for testId={}: {}", event.testId(), e.getMessage(), e);
-            // ack regardless to avoid poison-pill loop; transitional state failures surface
-            // via metrics + webhook FAILED event
+            log.error("Failed processing answer event for testId={}: {}",
+                    event.testId(), e.getMessage(), e);
+            // Ack to avoid poison-pill loop. Re-driving an answer for a stale call
+            // is handled idempotently downstream.
             ack.acknowledge();
         } finally {
             MDC.remove("testId");

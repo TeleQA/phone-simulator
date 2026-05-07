@@ -35,7 +35,7 @@ public class SmsController {
 
     private Call send(Direction direction, PlaceSmsRequest req) {
         return callService.sendSms(
-                direction,
+                req.testId(), direction,
                 req.callingParty(), req.calledParty(), req.imsi(),
                 req.mscNumber(), req.vlrAddress(), req.lac(), req.cellId(),
                 req.serviceKey(), req.callbackUrl()
@@ -43,7 +43,7 @@ public class SmsController {
     }
 
     private ResponseEntity<CallAcceptedResponse> accept(Call sms) {
-        String self = "/api/v1/calls/" + sms.callId();
+        String self = "/api/v1/calls/" + sms.testId();
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(CallAcceptedResponse.from(sms, self));
     }
