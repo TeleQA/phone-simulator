@@ -1,5 +1,6 @@
 package com.azerconnect.phonesim.it;
 
+import com.azerconnect.phonesim.adapter.kafka.AnswerEvent;
 import com.azerconnect.phonesim.adapter.kafka.CallRecordPayload;
 import com.azerconnect.phonesim.adapter.kafka.FireEvent;
 import com.azerconnect.phonesim.adapter.redis.CallRepository;
@@ -26,6 +27,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -66,6 +68,8 @@ class VoiceMoIntegrationTest {
             callEventConsumer.subscribe(List.of(kafkaProps.callEventTopic()));
             callEventConsumer.poll(Duration.ofMillis(500));
 
+            // 1) Place the call. Phone-simulator publishes INITIAL CallRecord and arms
+            //    a no-answer guard timer; it does NOT yet enqueue the duration timer.
             RestClient http = RestClient.builder().baseUrl("http://localhost:" + port).build();
             Map<String, Object> body = Map.of(
                     "testId", testId,
@@ -82,9 +86,11 @@ class VoiceMoIntegrationTest {
                     .retrieve().body(Map.class);
             assertThat(resp.get("testId")).isEqualTo(testId);
 
+            // 2) State should settle on RINGING (not ANSWERED) — we're waiting on the
+            //    AnswerEvent from the CAP simulator.
             await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
                     assertThat(callRepo.findById(testId).orElseThrow().status())
-                            .isEqualTo(CallStatus.ANSWERED));
+                            .isEqualTo(CallStatus.RINGING));
 
             JsonNode initialJson = pollOne(callEventConsumer, testId);
             assertThat(initialJson.get("serviceKey").asInt()).isEqualTo(201);
@@ -93,7 +99,21 @@ class VoiceMoIntegrationTest {
             assertThat(initialJson.get("callState").asText()).isEqualTo(CallRecordPayload.STATE_INITIAL);
             assertThat(initialJson.get("callDuration").asInt()).isEqualTo(5);
 
-            // Simulate scheduler firing the timer by publishing FireEvent to Kafka
+            // 3) Simulate CAP publishing the AnswerEvent → call should move to ANSWERED.
+            try (KafkaProducer<String, byte[]> producer = newProducer()) {
+                AnswerEvent answer = new AnswerEvent(
+                        testId, AnswerEvent.TYPE_O_ANSWER, Instant.now(), 1);
+                producer.send(new ProducerRecord<>(
+                        kafkaProps.answerEventTopic(),
+                        testId,
+                        mapper.writeValueAsBytes(answer))).get(5, TimeUnit.SECONDS);
+            }
+            await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertThat(callRepo.findById(testId).orElseThrow().status())
+                            .isEqualTo(CallStatus.ANSWERED));
+
+            // 4) Simulate the duration timer firing. Phone-simulator publishes LAST_CHUNK
+            //    and transitions to RELEASED.
             FireEvent fire = new FireEvent(testId, FireEvent.EVENT_RELEASE, 1);
             try (KafkaProducer<String, byte[]> producer = newProducer()) {
                 producer.send(new ProducerRecord<>(
@@ -101,7 +121,6 @@ class VoiceMoIntegrationTest {
                         testId,
                         mapper.writeValueAsBytes(fire))).get(5, TimeUnit.SECONDS);
             }
-
             await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
                     assertThat(callRepo.findById(testId).orElseThrow().status())
                             .isEqualTo(CallStatus.RELEASED));
@@ -109,6 +128,60 @@ class VoiceMoIntegrationTest {
             JsonNode lastChunkJson = pollOne(callEventConsumer, testId);
             assertThat(lastChunkJson.get("callState").asText())
                     .isEqualTo(CallRecordPayload.STATE_LAST_CHUNK);
+        }
+    }
+
+    @Test
+    void voiceMoNoAnswerTimeoutFailsCall() throws Exception {
+        IntegrationTestSupport.WIREMOCK.stubFor(post(urlMatching("/v1/timers"))
+                .willReturn(aResponse().withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"" + UUID.randomUUID()
+                                + "\",\"shard_id\":1,\"kafka_topic\":\""
+                                + kafkaProps.timerTopic()
+                                + "\",\"partition_key\":\"x\",\"state\":0,\"attempts\":0}")));
+        IntegrationTestSupport.WIREMOCK.stubFor(delete(urlPathMatching("/v1/timers/.*"))
+                .willReturn(aResponse().withStatus(204)));
+
+        String testId = "voice-mo-noans-" + UUID.randomUUID();
+        try (KafkaConsumer<String, byte[]> callEventConsumer = newCallEventConsumer()) {
+            callEventConsumer.subscribe(List.of(kafkaProps.callEventTopic()));
+            callEventConsumer.poll(Duration.ofMillis(500));
+
+            RestClient http = RestClient.builder().baseUrl("http://localhost:" + port).build();
+            http.post().uri("/api/v1/calls/voice/mo").body(Map.of(
+                    "testId", testId,
+                    "callingParty", "994501112233",
+                    "calledParty", "994504445566",
+                    "imsi", "400040000000001",
+                    "mscNumber", "994700000001",
+                    "vlrAddress", "994700000002",
+                    "lac", 1,
+                    "cellId", 1,
+                    "durationSeconds", 30
+            )).retrieve().toBodilessEntity();
+
+            await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertThat(callRepo.findById(testId).orElseThrow().status())
+                            .isEqualTo(CallStatus.RINGING));
+
+            // Drain INITIAL.
+            pollOne(callEventConsumer, testId);
+
+            // Fire the no-answer guard. Phone-simulator should fail the call.
+            FireEvent fire = new FireEvent(testId, FireEvent.EVENT_NO_ANSWER, 1);
+            try (KafkaProducer<String, byte[]> producer = newProducer()) {
+                producer.send(new ProducerRecord<>(
+                        kafkaProps.timerTopic(),
+                        testId,
+                        mapper.writeValueAsBytes(fire))).get(5, TimeUnit.SECONDS);
+            }
+
+            await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
+                var snap = callRepo.findById(testId).orElseThrow();
+                assertThat(snap.status()).isEqualTo(CallStatus.FAILED);
+                assertThat(snap.failureReason()).isEqualTo("no_answer_timeout");
+            });
         }
     }
 

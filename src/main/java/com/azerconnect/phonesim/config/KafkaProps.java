@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record KafkaProps(
         String timerTopic,
         String callEventTopic,
+        String answerEventTopic,
         int listenerConcurrency
 ) {
     public KafkaProps {
@@ -14,6 +15,9 @@ public record KafkaProps(
         }
         if (callEventTopic == null || callEventTopic.isBlank()) {
             throw new IllegalArgumentException("phonesim.kafka.call-event-topic must be set");
+        }
+        if (answerEventTopic == null || answerEventTopic.isBlank()) {
+            throw new IllegalArgumentException("phonesim.kafka.answer-event-topic must be set");
         }
         if (listenerConcurrency <= 0) listenerConcurrency = 4;
     }

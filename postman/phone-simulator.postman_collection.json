@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "phone-simulator",
-    "description": "REST API for the phone-simulator service. Drive voice calls (MO/MT) and SMS (MO/MT) through the AI Call Simulator Agent platform.\n\n**Variables**\n- `baseUrl` — phone-simulator base URL (default `http://localhost:8081`).\n- `testId` — auto-set from each create request's response.\n- `webhookId` — auto-set after registering a fallback webhook.\n\nEvery POST returns `202 Accepted` and echoes the `testId` you supplied. Use the same `testId` to fetch the snapshot via `GET /api/v1/calls/{testId}`.",
+    "description": "REST API for the phone-simulator service. Drive voice calls (MO/MT) and SMS (MO/MT) through the AI Call Simulator Agent platform.\n\n**Variables**\n- `baseUrl` — phone-simulator base URL (default `http://localhost:8081`).\n- `testId` — auto-set from each create request's response.\n- `webhookId` — auto-set after registering a fallback webhook.\n\nEvery POST returns `202 Accepted` and echoes the `testId` you supplied. Use the same `testId` to fetch the snapshot via `GET /api/v1/calls/{testId}`.\n\n**Voice flow is answer-driven**: a successful POST settles the call in `RINGING`, **not** `ANSWERED`. The CAP simulator must publish an `AnswerEvent` to Kafka topic `cap.answer-events.v1` (key = testId) before the call moves to `ANSWERED` and the duration timer starts. If no answer arrives within `phonesim.call.no-answer-timeout` (default 30 s), the call is failed with reason `no_answer_timeout`. Use `kcat -P -t cap.answer-events.v1 -k <testId>` (or any Kafka producer) to drive the answer manually during local testing — see the README for the AnswerEvent JSON shape.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

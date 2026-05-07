@@ -79,17 +79,42 @@ public class CallRepository {
         return count == null ? 0L : count;
     }
 
-    public void saveTimerId(String testId, UUID timerId) {
-        redis.opsForValue().set("timer:" + testId, timerId.toString(), props.callTtl());
+    /* Duration timer (fires when the configured callDuration has elapsed). */
+
+    public void saveDurationTimerId(String testId, UUID timerId) {
+        redis.opsForValue().set(durationTimerKey(testId), timerId.toString(), props.callTtl());
     }
 
-    public Optional<UUID> findTimerId(String testId) {
-        String value = redis.opsForValue().get("timer:" + testId);
+    public Optional<UUID> findDurationTimerId(String testId) {
+        String value = redis.opsForValue().get(durationTimerKey(testId));
         return value == null ? Optional.empty() : Optional.of(UUID.fromString(value));
     }
 
-    public void deleteTimerId(String testId) {
-        redis.delete("timer:" + testId);
+    public void deleteDurationTimerId(String testId) {
+        redis.delete(durationTimerKey(testId));
+    }
+
+    /* No-answer guard timer (fires only if no AnswerEvent arrives in time). */
+
+    public void saveNoAnswerTimerId(String testId, UUID timerId) {
+        redis.opsForValue().set(noAnswerTimerKey(testId), timerId.toString(), props.callTtl());
+    }
+
+    public Optional<UUID> findNoAnswerTimerId(String testId) {
+        String value = redis.opsForValue().get(noAnswerTimerKey(testId));
+        return value == null ? Optional.empty() : Optional.of(UUID.fromString(value));
+    }
+
+    public void deleteNoAnswerTimerId(String testId) {
+        redis.delete(noAnswerTimerKey(testId));
+    }
+
+    private static String durationTimerKey(String testId) {
+        return "timer:duration:" + testId;
+    }
+
+    private static String noAnswerTimerKey(String testId) {
+        return "timer:no-answer:" + testId;
     }
 
     private void indexCall(Call call) {

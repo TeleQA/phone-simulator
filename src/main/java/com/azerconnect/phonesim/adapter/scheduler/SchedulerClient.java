@@ -50,9 +50,17 @@ public class SchedulerClient {
     }
 
     public TimerResponse enqueueRelease(UUID timerId, String testId, long delayMs) {
+        return enqueue(timerId, testId, delayMs, FireEvent.EVENT_RELEASE);
+    }
+
+    public TimerResponse enqueueNoAnswerTimeout(UUID timerId, String testId, long delayMs) {
+        return enqueue(timerId, testId, delayMs, FireEvent.EVENT_NO_ANSWER);
+    }
+
+    private TimerResponse enqueue(UUID timerId, String testId, long delayMs, String eventType) {
         Timer.Sample sample = Timer.start();
         try {
-            FireEvent fire = new FireEvent(testId, FireEvent.EVENT_RELEASE, 1);
+            FireEvent fire = new FireEvent(testId, eventType, 1);
             String payloadB64 = Base64.getEncoder().encodeToString(toJsonBytes(fire));
 
             Map<String, Object> body = Map.of(
@@ -69,7 +77,8 @@ public class SchedulerClient {
                     .retrieve()
                     .body(TimerResponse.class);
         } catch (RestClientException e) {
-            log.error("Scheduler enqueue failed testId={} delayMs={}: {}", testId, delayMs, e.getMessage());
+            log.error("Scheduler enqueue failed testId={} eventType={} delayMs={}: {}",
+                    testId, eventType, delayMs, e.getMessage());
             throw e;
         } finally {
             sample.stop(enqueueTimer);

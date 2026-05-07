@@ -10,6 +10,9 @@ phonesim:
   kafka:
     timer-topic: phonesim.timers.v1
     call-event-topic: call-event-queue
+    answer-event-topic: cap.answer-events.v1
+  call:
+    no-answer-timeout: 30s
   defaults:
     voice-mo-service-key: 201
     voice-mo-roaming-service-key: 200
