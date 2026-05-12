@@ -2,7 +2,11 @@ package com.azerconnect.phonesim.api;
 
 import com.azerconnect.phonesim.domain.CallNotFoundException;
 import com.azerconnect.phonesim.domain.CallStateMachine;
+import com.azerconnect.phonesim.domain.DuplicateLocationIdException;
+import com.azerconnect.phonesim.domain.DuplicateMsisdnException;
 import com.azerconnect.phonesim.domain.DuplicateTestIdException;
+import com.azerconnect.phonesim.domain.LocationNotFoundException;
+import com.azerconnect.phonesim.domain.SubscriberNotFoundException;
 import org.apache.kafka.common.KafkaException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +34,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateTestIdException.class)
     public ResponseEntity<Map<String, Object>> duplicate(DuplicateTestIdException e) {
         return error(HttpStatus.CONFLICT, "duplicate_test_id", e.getMessage());
+    }
+
+    @ExceptionHandler(SubscriberNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> subscriberNotFound(SubscriberNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, "subscriber_not_found", e.getMessage());
+    }
+
+    @ExceptionHandler(LocationNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> locationNotFound(LocationNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, "location_not_found", e.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateMsisdnException.class)
+    public ResponseEntity<Map<String, Object>> duplicateMsisdn(DuplicateMsisdnException e) {
+        return error(HttpStatus.CONFLICT, "duplicate_msisdn", e.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateLocationIdException.class)
+    public ResponseEntity<Map<String, Object>> duplicateLocation(DuplicateLocationIdException e) {
+        return error(HttpStatus.CONFLICT, "duplicate_location_id", e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

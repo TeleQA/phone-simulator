@@ -46,15 +46,11 @@ class SmsMoIntegrationTest {
             consumer.poll(Duration.ofMillis(500));
 
             RestClient http = RestClient.builder().baseUrl("http://localhost:" + port).build();
+            IntegrationTestSupport.ensureSubscriber(http, "994501112233", "400040000000001", "BAKU_CENTER");
             Map<String, Object> body = Map.of(
                     "testId", testId,
                     "callingParty", "994501112233",
-                    "calledParty", "994504445566",
-                    "imsi", "400040000000001",
-                    "mscNumber", "994700000001",
-                    "vlrAddress", "994700000002",
-                    "lac", 1,
-                    "cellId", 1
+                    "calledParty", "994504445566"
             );
             Map<?, ?> resp = http.post().uri("/api/v1/sms/mo").body(body)
                     .retrieve().body(Map.class);

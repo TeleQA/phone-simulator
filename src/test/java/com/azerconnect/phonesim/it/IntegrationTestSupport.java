@@ -4,20 +4,26 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.KafkaContainer;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
+
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 
 public final class IntegrationTestSupport {
 
     public static final GenericContainer<?> REDIS =
-            new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            new GenericContainer<>(DockerImageName.parse("harbor.azerconnect.az/infra/redis:7-alpine"))
                     .withExposedPorts(6379);
 
     public static final KafkaContainer KAFKA =
-            new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.1"));
+            new KafkaContainer(DockerImageName.parse("harbor.azerconnect.az/infra/apache/kafka:4.1.0")
+                    .asCompatibleSubstituteFor("apache/kafka"));
 
     public static final WireMockServer WIREMOCK = new WireMockServer(wireMockConfig().dynamicPort());
 
@@ -28,6 +34,27 @@ public final class IntegrationTestSupport {
     }
 
     private IntegrationTestSupport() {}
+
+    /**
+     * Registers a subscriber via the admin REST API, tolerating a 409 if the MSISDN
+     * is already on file (tests in the same Redis-backed run can share subscribers).
+     */
+    public static void ensureSubscriber(RestClient http, String msisdn, String imsi, String homeLocationId) {
+        try {
+            http.post().uri("/api/v1/subscribers")
+                    .body(Map.of(
+                            "msisdn", msisdn,
+                            "imsi", imsi,
+                            "homeLocationId", homeLocationId,
+                            "label", "it-test"))
+                    .retrieve().toBodilessEntity();
+        } catch (HttpClientErrorException e) {
+            HttpStatusCode status = e.getStatusCode();
+            if (status.value() != 409) {
+                throw e;
+            }
+        }
+    }
 
     public static class Initializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
         @Override

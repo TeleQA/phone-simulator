@@ -59,6 +59,7 @@ public class CallService {
     private final HangupEventPublisher hangupPublisher;
     private final SchedulerClient scheduler;
     private final WebhookDispatcher webhooks;
+    private final SubscriberService subscribers;
     private final CallProps callProps;
     private final MeterRegistry meters;
 
@@ -68,6 +69,7 @@ public class CallService {
                        HangupEventPublisher hangupPublisher,
                        SchedulerClient scheduler,
                        WebhookDispatcher webhooks,
+                       SubscriberService subscribers,
                        CallProps callProps,
                        MeterRegistry meters) {
         this.repo = repo;
@@ -76,21 +78,26 @@ public class CallService {
         this.hangupPublisher = hangupPublisher;
         this.scheduler = scheduler;
         this.webhooks = webhooks;
+        this.subscribers = subscribers;
         this.callProps = callProps;
         this.meters = meters;
     }
 
     public Call placeVoice(String testId, Direction direction,
-                            String callingParty, String calledParty, String imsi,
-                            String mscNumber, String vlrAddress, int lac, int cellId,
-                            int durationSeconds, boolean roaming, Integer serviceKeyOverride,
+                            String callingParty, String calledParty,
+                            int durationSeconds, Integer serviceKeyOverride,
                             String callbackUrl) {
         MDC.put("testId", testId);
         try {
+            String registeredMsisdn = direction == Direction.MT ? calledParty : callingParty;
+            ResolvedSubscriber subscriber = subscribers.resolve(registeredMsisdn);
+            boolean roaming = subscriber.roaming();
             int serviceKey = mapper.resolveServiceKey(CallKind.VOICE, direction, roaming, serviceKeyOverride);
             Instant now = Instant.now();
             Call call = new Call(testId, CallKind.VOICE, direction, CallStatus.PENDING,
-                    callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
+                    callingParty, calledParty, subscriber.imsi(),
+                    subscriber.mscNumber(), subscriber.vlrAddress(),
+                    subscriber.lac(), subscriber.cellId(),
                     durationSeconds, serviceKey, roaming, callbackUrl, now, now, null);
             if (!repo.saveIfAbsent(call)) {
                 throw new DuplicateTestIdException(testId);
@@ -120,15 +127,18 @@ public class CallService {
     }
 
     public Call sendSms(String testId, Direction direction,
-                        String callingParty, String calledParty, String imsi,
-                        String mscNumber, String vlrAddress, int lac, int cellId,
+                        String callingParty, String calledParty,
                         Integer serviceKeyOverride, String callbackUrl) {
         MDC.put("testId", testId);
         try {
+            String registeredMsisdn = direction == Direction.MT ? calledParty : callingParty;
+            ResolvedSubscriber subscriber = subscribers.resolve(registeredMsisdn);
             int serviceKey = mapper.resolveServiceKey(CallKind.SMS, direction, false, serviceKeyOverride);
             Instant now = Instant.now();
             Call sms = new Call(testId, CallKind.SMS, direction, CallStatus.PENDING,
-                    callingParty, calledParty, imsi, mscNumber, vlrAddress, lac, cellId,
+                    callingParty, calledParty, subscriber.imsi(),
+                    subscriber.mscNumber(), subscriber.vlrAddress(),
+                    subscriber.lac(), subscriber.cellId(),
                     0, serviceKey, false, callbackUrl, now, now, null);
             if (!repo.saveIfAbsent(sms)) {
                 throw new DuplicateTestIdException(testId);

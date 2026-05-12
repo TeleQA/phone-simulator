@@ -43,6 +43,40 @@ phonesim:
     voice-mt-service-key: 101
     sms-service-key: 205
     smsc-address: "994550000342"
+  seed:
+    locations:
+      - id: BAKU_CENTER
+        lac: 1001
+        cell-id: 11
+        vlr-address: "994700000002"
+        msc-number: "994700000001"
+        mcc: "400"
+        mnc: "04"
+        roaming: false
+      - id: GANJA_DOWNTOWN
+        lac: 1002
+        cell-id: 22
+        vlr-address: "994700000004"
+        msc-number: "994700000003"
+        mcc: "400"
+        mnc: "04"
+        roaming: false
+      - id: ISTANBUL_TURKCELL
+        lac: 2001
+        cell-id: 31
+        vlr-address: "905300000002"
+        msc-number: "905300000001"
+        mcc: "286"
+        mnc: "01"
+        roaming: true
+      - id: DUBAI_ETISALAT
+        lac: 3001
+        cell-id: 41
+        vlr-address: "971500000002"
+        msc-number: "971500000001"
+        mcc: "424"
+        mnc: "02"
+        roaming: true
   redis:
     call-ttl: 2h
   webhook:

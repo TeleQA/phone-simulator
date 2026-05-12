@@ -53,12 +53,10 @@ public class VoiceCallController {
     }
 
     private Call placeVoice(Direction direction, PlaceVoiceCallRequest req) {
-        boolean roaming = req.roaming() != null && req.roaming();
         return callService.placeVoice(
                 req.testId(), direction,
-                req.callingParty(), req.calledParty(), req.imsi(),
-                req.mscNumber(), req.vlrAddress(), req.lac(), req.cellId(),
-                req.durationSeconds(), roaming, req.serviceKey(), req.callbackUrl()
+                req.callingParty(), req.calledParty(),
+                req.durationSeconds(), req.serviceKey(), req.callbackUrl()
         );
     }
 

@@ -36,8 +36,7 @@ public class SmsController {
     private Call send(Direction direction, PlaceSmsRequest req) {
         return callService.sendSms(
                 req.testId(), direction,
-                req.callingParty(), req.calledParty(), req.imsi(),
-                req.mscNumber(), req.vlrAddress(), req.lac(), req.cellId(),
+                req.callingParty(), req.calledParty(),
                 req.serviceKey(), req.callbackUrl()
         );
     }

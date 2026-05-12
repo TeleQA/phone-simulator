@@ -114,6 +114,7 @@ public class SchedulerClient {
         @Bean
         RestClient phoneSimSchedulerRestClient(SchedulerProps props) {
             HttpClient http = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
                     .connectTimeout(Duration.ofMillis(props.connectTimeoutMs()))
                     .executor(Executors.newVirtualThreadPerTaskExecutor())
                     .build();

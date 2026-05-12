@@ -71,15 +71,11 @@ class VoiceMoIntegrationTest {
             // 1) Place the call. Phone-simulator publishes INITIAL CallRecord and arms
             //    a no-answer guard timer; it does NOT yet enqueue the duration timer.
             RestClient http = RestClient.builder().baseUrl("http://localhost:" + port).build();
+            IntegrationTestSupport.ensureSubscriber(http, "994501112233", "400040000000001", "BAKU_CENTER");
             Map<String, Object> body = Map.of(
                     "testId", testId,
                     "callingParty", "994501112233",
                     "calledParty", "994504445566",
-                    "imsi", "400040000000001",
-                    "mscNumber", "994700000001",
-                    "vlrAddress", "994700000002",
-                    "lac", 1,
-                    "cellId", 1,
                     "durationSeconds", 5
             );
             Map<?, ?> resp = http.post().uri("/api/v1/calls/voice/mo").body(body)
@@ -98,6 +94,13 @@ class VoiceMoIntegrationTest {
             assertThat(initialJson.get("mtCall").asBoolean()).isFalse();
             assertThat(initialJson.get("callState").asText()).isEqualTo(CallRecordPayload.STATE_INITIAL);
             assertThat(initialJson.get("callDuration").asInt()).isEqualTo(5);
+            // Network fields should have been resolved from the BAKU_CENTER seed location
+            // and the registered subscriber's IMSI — not supplied by the caller.
+            assertThat(initialJson.get("imsi").asText()).isEqualTo("400040000000001");
+            assertThat(initialJson.get("lac").asInt()).isEqualTo(1001);
+            assertThat(initialJson.get("cellId").asInt()).isEqualTo(11);
+            assertThat(initialJson.get("vlrAddress").asText()).isEqualTo("994700000002");
+            assertThat(initialJson.get("mscNumber").asText()).isEqualTo("994700000001");
 
             // 3) Simulate CAP publishing the AnswerEvent → call should move to ANSWERED.
             try (KafkaProducer<String, byte[]> producer = newProducer()) {
@@ -162,15 +165,11 @@ class VoiceMoIntegrationTest {
             callEventConsumer.poll(Duration.ofMillis(500));
 
             RestClient http = RestClient.builder().baseUrl("http://localhost:" + port).build();
+            IntegrationTestSupport.ensureSubscriber(http, "994501112233", "400040000000001", "BAKU_CENTER");
             http.post().uri("/api/v1/calls/voice/mo").body(Map.of(
                     "testId", testId,
                     "callingParty", "994501112233",
                     "calledParty", "994504445566",
-                    "imsi", "400040000000001",
-                    "mscNumber", "994700000001",
-                    "vlrAddress", "994700000002",
-                    "lac", 1,
-                    "cellId", 1,
                     "durationSeconds", 30
             )).retrieve().toBodilessEntity();
 
